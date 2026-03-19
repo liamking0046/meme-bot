@@ -1,8 +1,16 @@
+const fs = require('fs');
+const path = require('path');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 
 const DURATION_MS = 70_000;
 const FRAME_INTERVAL_MS = 2_000;
+const SESSION_PATH = path.join(process.cwd(), '.wwebjs_auth');
+
+if (process.env.RESET_SESSION === '1' && fs.existsSync(SESSION_PATH)) {
+  fs.rmSync(SESSION_PATH, { recursive: true, force: true });
+  console.log('🧹 Existing WhatsApp session cleared because RESET_SESSION=1.');
+}
 
 /**
  * All commands return an array of frames made with letters, symbols, and emojis.
@@ -104,7 +112,7 @@ async function runAnimation(message, command) {
 }
 
 const client = new Client({
-  authStrategy: new LocalAuth(),
+  authStrategy: new LocalAuth({ dataPath: SESSION_PATH }),
   puppeteer: {
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -112,13 +120,33 @@ const client = new Client({
 });
 
 client.on('qr', (qr) => {
+  console.log('\n📲 New QR received. Scan it from WhatsApp > Linked devices > Link a device.\n');
   qrcode.generate(qr, { small: true });
-  console.log('Scan the QR code above with WhatsApp to log in.');
+  console.log('\nIf the ASCII QR is not visible, copy this raw QR token into any online QR generator:');
+  console.log(qr);
+  console.log('\nQR fallback link:');
+  console.log(`https://api.qrserver.com/v1/create-qr-code/?size=350x350&data=${encodeURIComponent(qr)}\n`);
+});
+
+client.on('loading_screen', (percent, message) => {
+  console.log(`⌛ Loading... ${percent}% - ${message}`);
+});
+
+client.on('authenticated', () => {
+  console.log('🔐 Authenticated successfully.');
+});
+
+client.on('auth_failure', (msg) => {
+  console.error('❌ Authentication failed:', msg);
 });
 
 client.on('ready', () => {
   console.log('✅ WhatsApp animation bot is ready.');
   console.log(`Commands: ${commands.join(', ')}`);
+});
+
+client.on('disconnected', (reason) => {
+  console.log(`⚠️ Client disconnected: ${reason}`);
 });
 
 client.on('message', async (message) => {
@@ -143,3 +171,5 @@ client.on('message', async (message) => {
 });
 
 client.initialize();
+
+  
